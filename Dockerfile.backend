@@ -1,0 +1,35 @@
+# Use Python 3.11 slim image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    libprotobuf-dev \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for caching
+COPY requirements.txt .
+
+# Install Python dependencies (prefer binary wheels)
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+# Copy app code
+COPY app.py .
+COPY locales/ ./locales/
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app \
+    && chown -R app:app /app
+USER app
+
+EXPOSE 8000
+
+# Healthcheck (use python instead of curl to avoid root deps)
+HEALTHCHECK CMD python -c "import requests; import sys; sys.exit(0 if requests.get('http://localhost:8000/languages').ok else 1)" || exit 1
+
+# Run with uvicorn
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
